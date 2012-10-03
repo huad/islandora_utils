@@ -13,9 +13,11 @@ function islandora_drush_command() {
   return array(
     'islandora-purge' => array(
       'callback' => 'drush_islandora_purge',
+      'arguments' => array('recursive' => 'Purge all child and decendant objects as well.'),
       'description' => 'Purges the object identified by the provided PID',
       'examples' => array(
-        'drush islandora-purge PID',
+        'drush islandora-purge PID' => 'Delete the object identified by PID',
+        'drush islandora-purge --recursive PID' => 'Delete the object identified by PID as well as all decendant elements defined by isMemberOf or isMemberOfCollection relationships',
       ),
       'aliases' => array('purge'),
       'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_LOGIN, // We can pass in users id on the command line using drush -u.
@@ -40,11 +42,18 @@ function islandora_drush_command() {
  */
 function drush_islandora_purge($pid) {
   $repo = islandora_drush_repository();
+  if(drush_get_option('recursive')) {
+    $query = 'select $o from <#ri> where ($o <fedora-rels-ext:isMemberOf> <info:fedora/' . $pid . '> or $o <fedora-rels-ext:isMemberOfCollection> <info:fedora/' . $pid . '>)';
+    $results = $repo->ri->itqlQuery($query);
+    $results = array_map(function($o) { return $o['o']['value']; }, $results);
+    array_walk($results, 'drush_islandora_purge');
+  }
   try {
     $o = $repo->getObject($pid); // Check if the object exists.
     $repo->api->m->purgeObject($o->id, false, 'Purged object via islandora drush purge script.');
   } catch (Exception $e) {
     drush_set_error(dt('Failed to purge the object "!PID": !msg', array('!PID' => $pid, '!msg' => $e->getMessage())));
+    return;
   }
   drush_print(dt('Successfully purge the object "!PID"', array('!PID' => $pid)));
 }
