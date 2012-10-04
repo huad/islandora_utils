@@ -13,11 +13,15 @@ function islandora_drush_command() {
   return array(
     'islandora-purge' => array(
       'callback' => 'drush_islandora_purge',
-      'arguments' => array('recursive' => 'Purge all child and decendant objects as well.'),
+      'arguments' => array(
+        'recursive' => 'Purge all child and descendant objects as well.',
+        'interactive' => 'Prompt the user before deleting every object.'
+      ),
       'description' => 'Purges the object identified by the provided PID',
       'examples' => array(
         'drush islandora-purge PID' => 'Delete the object identified by PID',
-        'drush islandora-purge --recursive PID' => 'Delete the object identified by PID as well as all decendant elements defined by isMemberOf or isMemberOfCollection relationships',
+        'drush islandora-purge --recursive PID' => 'Delete the object identified by PID as well as all descendant elements defined by isMemberOf or isMemberOfCollection relationships',
+        'drush islandora-purge --interactive PID' => 'Prompt the user before deleting the object.'
       ),
       'aliases' => array('purge'),
       'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_LOGIN, // We can pass in users id on the command line using drush -u.
@@ -25,7 +29,7 @@ function islandora_drush_command() {
     // @todo Implement
     'islandora-set-state' => array(
       'callback' => 'drush_islandora_set_state',
-      'description' => 'Changes the given state of the object idenitified by the provided PID. The options are "A", "I", "D"',
+      'description' => 'Changes the given state of the object identified by the provided PID. The options are "A", "I", "D"',
       'examples' => array(
         'drush islandora-set-state PID STATE',
       ),
@@ -41,21 +45,24 @@ function islandora_drush_command() {
  * @param string $pid
  */
 function drush_islandora_purge($pid) {
+  static $purged = array();
   $repo = islandora_drush_repository();
   if(drush_get_option('recursive')) {
     $query = 'select $o from <#ri> where ($o <fedora-rels-ext:isMemberOf> <info:fedora/' . $pid . '> or $o <fedora-rels-ext:isMemberOfCollection> <info:fedora/' . $pid . '>)';
-    $results = $repo->ri->itqlQuery($query);
-    $results = array_map(function($o) { return $o['o']['value']; }, $results);
+    $results = $repo->ri->itqlQuery($query); // Immediate children
+    $results = array_map(function($o) { return $o['o']['value']; }, $results); // PIDs only.
+    $results = array_diff($results, $purged); // Only call the function for objects not marked as purged.
+    $purged = array_merge($purged, $results, array($pid)); // Prevent circular dependencies and infinite recursion.
     array_walk($results, 'drush_islandora_purge');
   }
   try {
-    $o = $repo->getObject($pid); // Check if the object exists.
-    $repo->api->m->purgeObject($o->id, false, 'Purged object via islandora drush purge script.');
+    $label = $repo->getObject($pid)->label;
+    $repo->purgeObject($pid);
   } catch (Exception $e) {
-    drush_set_error(dt('Failed to purge the object "!PID": !msg', array('!PID' => $pid, '!msg' => $e->getMessage())));
+    drush_set_error(dt('Failed to purge "!PID": !msg', array('!PID' => $pid, '!msg' => $e->getMessage())));
     return;
   }
-  drush_print(dt('Successfully purge the object "!PID"', array('!PID' => $pid)));
+  drush_print(dt('Successfully purge: "!Label" (!PID)', array('!PID' => $pid, '!Label' => $label)));
 }
 
 /**
@@ -68,7 +75,7 @@ function drush_islandora_purge_validate() {
 /**
  * Includes Tuque API.
  *
- * @return boolean
+ * @return Boolean
  *   TRUE if the API was included, FALSE otherwise.
  */
 function islandora_drush_include_tuque() {
@@ -88,7 +95,7 @@ function islandora_drush_include_tuque() {
 }
 
 /**
- * Fetchs the Repository instance, creates it if it doesn't exist.
+ * Fetches the Repository instance, creates it if it doesn't exist.
  *
  * @return FedoraRepository
  *   The default fedora repository for this site.
