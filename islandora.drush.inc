@@ -16,8 +16,15 @@ function islandora_drush_command() {
     'islandora-purge' => array(
       'callback' => 'drush_islandora_purge',
       'arguments' => array(
-        'recursive' => 'Purge all child and descendant objects as well.',
-        'interactive' => 'Prompt the user before deleting every object.'
+        'pid' => 'The PID of the object to purge.',
+      ),
+      'options' => array(
+        'recursive' => array(
+          'description' => 'Purge all child and descendant objects as well.',
+        ),
+        'interactive' => array(
+          'description' => 'Prompt the user before deleting every object.'
+        )
       ),
       'description' => 'Purges the object identified by the provided PID',
       'examples' => array(
