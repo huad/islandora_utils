@@ -71,8 +71,45 @@ function islandora_drush_command() {
       ),
       'aliases' => array('risearch'),
       'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_LOGIN, // We can pass in users id on the command line using drush -u.
-    )
+    ),
+    'islandora-select' => array(
+      'description' => 'Gets the list of all objects in the given namespace.',
+      'options' => array(
+        'namespace' => array(
+          'description' => 'The namespace to select.',
+        ),
+        'delete' => array(
+          'description' => 'Delete the selected objects.',
+        ),
+      ),
+      'drupal dependencies' => array('islandora'),
+      'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_LOGIN,
+    ),
   );
+}
+
+function drush_islandora_select() {
+  $connection = islandora_get_tuque_connection();
+  $repo = $connection->repository;
+  $namespace = drush_get_option('namespace', 'changeme');
+  $q = <<<EOQ
+SELECT ?obj
+FROM <#ri>
+WHERE {
+  ?obj <info:fedora/fedora-system:def/model#hasModel> ?model .
+  FILTER(regex(str(?obj), '^info:fedora/$namespace:'))
+}
+EOQ;
+  if (drush_get_option('delete', FALSE)) {
+    foreach ($repo->ri->sparqlQuery($q) as $result) {
+      drush_islandora_purge($result['obj']['value']);
+    }
+  }
+  else {
+    foreach ($repo->ri->sparqlQuery($q) as $result) {
+      echo $result['obj']['value'] . "\n";
+    }
+  }
 }
 
 /**
